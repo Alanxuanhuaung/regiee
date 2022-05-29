@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class UserController {
     @Autowired
-    private RedisTemplate RedisTemplate;
+    private RedisTemplate redisTemplate;
 
     @Autowired
     private UserService userService;
@@ -44,7 +44,7 @@ public class UserController {
         //发送验证码，用邮箱号存储，好取出对比
         SendEmailCode.send(code,phone);
 //        session.setAttribute(phone,code);
-        RedisTemplate.opsForValue().set(phone, code, 5, TimeUnit.MINUTES);
+        redisTemplate.opsForValue().set(phone, code, 5, TimeUnit.MINUTES);
         return R.success("验证码发送成功");
     }
 
@@ -57,7 +57,7 @@ public class UserController {
         //从session中获得保存的验证码
 //        String codeInSession = session.getAttribute(phone).toString();
         //从redis中取出验证码
-        String codeInSession = (String) RedisTemplate.opsForValue().get(phone);
+        String codeInSession = (String) redisTemplate.opsForValue().get(phone);
 
         //提交的验证码和session保存的验证码进行比对。
         if (codeInSession!= null && codeInSession.equals(code)){
@@ -74,7 +74,7 @@ public class UserController {
             //将登陆的用户id保存入session
             session.setAttribute("user", user.getId());
             //登陆成功删除验证码
-            RedisTemplate.delete(phone);
+            redisTemplate.delete(phone);
             return R.success(user);
         }
 
