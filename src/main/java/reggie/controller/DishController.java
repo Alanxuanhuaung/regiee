@@ -1,10 +1,13 @@
 package reggie.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 import reggie.common.R;
 import reggie.dto.DishDto;
@@ -16,6 +19,7 @@ import reggie.service.DishFlavorService;
 import reggie.service.DishService;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +36,8 @@ public class DishController {
     private CategoryService categoryService;
     @Autowired
     private DishFlavorService dishFlavorService;
+    @Autowired
+    private RedisTemplate redisTemplate;
 
 
     //新增菜品
@@ -98,6 +104,9 @@ public class DishController {
     @PutMapping
     public R<String> update(@RequestBody DishDto dishDto){
         dishService.updateWithFlavor(dishDto);
+        //清除具体类的缓存
+        String key = "dish_" + dishDto.getCategoryId() + "_1";
+        redisTemplate.delete(key);
         return R.success("修改菜品成功");
     }
 
@@ -111,6 +120,15 @@ public class DishController {
     //添加套餐中添加菜品的数据回显功能，参数传为catetoryId，dish中有用dish复用性更强
     @GetMapping("/list")
     public R<List<DishDto>> list(Dish dish){
+        List<DishDto> disDtoList =null;
+        String key = "dish_" + dish.getCategoryId() + "_" + dish.getStatus();
+        //先从redis中获取缓存数据
+        disDtoList = (List<DishDto>) redisTemplate.opsForValue().get(key);
+        if (disDtoList!=null){
+            //如果存在直接返回数据，无需查询数据库
+            return R.success(disDtoList);
+        }
+        //不存在则继续查数据库
         //构造查询条件
         LambdaQueryWrapper<Dish> QueryWrapper = new LambdaQueryWrapper<>();
         QueryWrapper.eq(dish.getCategoryId()!=null, Dish::getCategoryId,dish.getCategoryId());
@@ -121,7 +139,7 @@ public class DishController {
         //进行查询，返回Dishlist数据
         List<Dish> list = dishService.list(QueryWrapper);
         //给dto增加口味数据
-       List<DishDto> dishDtoList = list.stream().map((item)->{
+            disDtoList = list.stream().map((item)->{
             DishDto dishDto = new DishDto();
             //对象拷贝
             BeanUtils.copyProperties(item, dishDto);
@@ -133,9 +151,10 @@ public class DishController {
             dishDto.setFlavors(dishFlavors);
             return dishDto;
         }).collect(Collectors.toList());
+        //如果不存在则将查询到的数据添加进缓存
+        redisTemplate.opsForValue().set(key, disDtoList, 60, TimeUnit.MINUTES);
 
-
-        return R.success(dishDtoList);
+        return R.success(disDtoList);
     }
 
 
